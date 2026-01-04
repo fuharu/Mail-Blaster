@@ -1,73 +1,173 @@
-# React + TypeScript + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-Currently, two official plugins are available:
+# Email Power Wash (Mail-Blaster)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+**「未読メールの整理」×「高圧洗浄シミュレーター」**
 
-## React Compiler
+未読メールが溜まるストレスを、洗浄する快感（ASMR）に変えるプロトタイプアプリケーションです。
+Gmail APIを使用し、実際にメールを「汚れ」として描画。高圧洗浄機で綺麗にすることで、Gmail上のメールをアーカイブ（整理）します。
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🚀 主な機能
+* **Google OAuth認証:** 安全なログインと権限管理。
+* **メールの汚れ化:** 未読メールを取得し、Pixi.jsを用いて2Dキャンバス上に「汚れ」として生成。
+* **洗浄アクション:** マウス操作で汚れをこすって落とすインタラクティブな体験。
+* **同期機能:** ゲーム内で綺麗にした結果を、実際のGmail（アーカイブ処理）に反映。
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🛠 前提条件
+* Node.js (v18以上推奨)
+* npm
+* Google アカウント
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## ⚙️ 環境構築・セットアップ手順
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 1. リポジトリのクローンとインストール
+```bash
+git clone [https://github.com/fuharu/Mail-Blaster.git](https://github.com/fuharu/Mail-Blaster.git)
+cd Mail-Blaster
+npm install
+````
+
+### 2. Google Cloud Platform (GCP) の設定
+
+Gmail APIを利用するために、Google Cloud Consoleでの設定が必須です。
+
+#### 2-1. プロジェクトの作成
+
+1. [Google Cloud Console](https://console.cloud.google.com/) にアクセスします。
+    
+2. 左上のプロジェクト選択から**「新しいプロジェクト」**を作成します（例: `EmailPowerWash`）。
+    
+
+#### 2-2. Gmail API の有効化
+
+1. 左メニュー「APIとサービス」 > **「ライブラリ」**を選択。
+    
+2. 検索バーに `Gmail API` と入力して検索。
+    
+3. **「有効にする」**をクリック。
+    
+
+#### 2-3. OAuth 同意画面の設定
+
+1. 左メニュー**「OAuth 同意画面」**を選択。
+    
+2. User Type で **「外部 (External)」** を選択し「作成」。
+    
+3. **アプリ情報**を入力:
+    
+    - **アプリ名:** `Email Power Wash` (任意)
+        
+    - **ユーザーサポートメール:** 自分のアドレス
+        
+    - **デベロッパーの連絡先:** 自分のアドレス
+        
+4. **スコープ (Scopes):**
+    
+    - 「スコープを追加または削除」をクリック。
+        
+    - フィルタに `https://www.googleapis.com/auth/gmail.modify` を入力し、チェックを入れて「更新」。
+        
+5. **テストユーザー (重要):**
+    
+    - 開発中はアプリがGoogleの審査を通っていないため、ログインに使用するGmailアドレスをここで登録する必要があります。
+        
+    - **「ADD USERS」**をクリックし、自分のGmailアドレスを追加してください。
+        
+
+#### 2-4. 認証情報 (Client ID) の取得
+
+1. 左メニュー「認証情報」 > 「認証情報を作成」 > **「OAuth クライアント ID」**。
+    
+2. アプリケーションの種類: **「ウェブ アプリケーション」**。
+    
+3. 名前: `Local Dev` (任意)。
+    
+4. **承認済みの JavaScript 生成元:**
+    
+    - `http://localhost:5173` を追加。
+        
+5. **承認済みのリダイレクト URI:**
+    
+    - `http://localhost:5173` を追加。
+        
+6. **「作成」**をクリックし、表示される **「クライアント ID」** をコピーして控えておきます。
+    
+    - (例: `123456789-abcdefg.apps.googleusercontent.com`)
+        
+
+### 3. 環境変数の設定
+
+セキュリティのため、Client IDはコードに直接記述せず、環境変数として管理します。
+
+1. プロジェクトのルートディレクトリに `.env` ファイルを新規作成します。
+    
+2. 以下の内容を記述し、`YOUR_CLIENT_ID` の部分を先ほど取得したIDに書き換えてください。
+    
+
+コード スニペット
+
+```
+VITE_GOOGLE_CLIENT_ID=あなたのクライアントIDをここに貼り付け
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+> **注意:** `.env` ファイルは `.gitignore` に含まれているため、GitHubにはアップロードされません。チーム開発や別環境で動かす際は、各自でこのファイルを作成する必要があります。
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+---
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## ▶️ 実行方法
+
+設定が完了したら、以下のコマンドで開発サーバーを起動します。
+
+Bash
+
 ```
+npm run dev
+```
+
+ブラウザで [http://localhost:5173](https://www.google.com/search?q=http://localhost:5173) にアクセスしてください。
+
+### 使い方
+
+1. Googleでログイン:
+    
+    画面左上のボタンからログインし、権限を承認します。
+    
+    - ※「このアプリはGoogleで確認されていません」と出る場合は、「詳細」→「(安全ではないページ)に移動」を選択してください（テストユーザー特有の挙動です）。
+        
+2. 汚れをスキャン:
+    
+    ボタンを押すと未読メールを取得し、画面上に「汚れ」として表示します。
+    
+3. 洗浄 (Cleaning):
+    
+    マウスドラッグまたはクリックで汚れをこすると、汚れが徐々に消えます。
+    
+4. 結果を反映:
+    
+    「洗浄結果を反映」ボタンを押すと、綺麗にしたメールが実際にGmail上でアーカイブされます。
+    
+
+---
+
+## 📁 ディレクトリ構成
+
+- `src/components/CleaningCanvas.tsx`: Pixi.js (v8) を使用した描画・ゲームロジック。
+    
+- `src/GmailService.ts`: Gmail APIとの通信処理（取得、アーカイブ）。
+    
+- `src/App.tsx`: アプリ全体のUI統合と状態管理。
+    
+- `src/main.tsx`: エントリーポイント・認証プロバイダ設定。
+    
+- `src/types.ts`: TypeScript型定義。
+    
+
+---
+
+## 🛡️ 免責事項
+
+このプロジェクトはプロトタイプです。 メールのアーカイブ操作（整理）を行いますが、重要なデータを扱う際は十分にご注意ください。開発者は本ソフトウェアの使用により生じたいかなる損害についても責任を負いません。

@@ -172,7 +172,7 @@ npm run dev
 
 ---
 
-##　three.js を使う際
+## three.js を使う際
 
 three.jsを使用して3Dを使用しようとした残骸。使う場合は以下の手順
 

@@ -26,10 +26,14 @@ Gmail APIを使用し、実際にメールを「汚れ」として描画。高�
 
 ### 1. リポジトリのクローンとインストール
 ```bash
-git clone [https://github.com/fuharu/Mail-Blaster.git](https://github.com/fuharu/Mail-Blaster.git)
+git clone https://github.com/fuharu/Mail-Blaster.git
+```
+```
 cd Mail-Blaster
+```
+```
 npm install
-````
+```
 
 ### 2. Google Cloud Platform (GCP) の設定
 

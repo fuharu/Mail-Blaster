@@ -11,3 +11,15 @@ export interface EmailMessage {
 }
 
 export type DirtType = 'SLIME' | 'STICKER' | 'DUST';
+
+// 洗浄モード（ノズルの種類）
+export type CleaningMode = 'ARCHIVE' | 'DELETE';
+
+// 汚れの物理状態（描画担当のオブジェクトにアタッチする拡張プロパティ）
+export interface DirtPhysicsState {
+  hp: number;
+  maxHp: number;
+  isDead: boolean;       // 完全に消滅したか
+  isDying: boolean;      // 消滅アニメーション中か
+  mode?: CleaningMode;   // どのモードで倒されたか
+}

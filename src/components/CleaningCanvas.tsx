@@ -1,17 +1,44 @@
 // src/components/CleaningCanvas.tsx
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
-import type { EmailMessage } from '../types';
+import type { EmailMessage, CleaningMode, DirtPhysicsState } from '../types';
+import { NozzleController } from './nozzle/NozzleController';
+import { InteractionSystem } from '../systems/InteractionSystem';
+import { ParticleSystem } from '../systems/ParticleSystem';
+import { SoundManager } from '../systems/SoundManager'; 
 
 interface Props {
   emails: EmailMessage[];
   onCleanComplete: (cleanedIds: string[]) => void;
 }
 
+// 汚れコンテナの型拡張
+type DirtContainer = PIXI.Container & {
+  physics?: DirtPhysicsState;
+  emailId?: string;
+};
+
 const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<PIXI.Application | null>(null);
   const cleanedIdsRef = useRef<Set<string>>(new Set());
+
+  // システムの参照
+  const soundManagerRef = useRef<SoundManager | null>(null);
+  const nozzleControllerRef = useRef<NozzleController | null>(null);
+  const interactionSystemRef = useRef<InteractionSystem | null>(null);
+  const particleSystemRef = useRef<ParticleSystem | null>(null);
+  const dirtListRef = useRef<DirtContainer[]>([]);
+
+  // UI状態
+  const [currentMode, setCurrentMode] = useState<CleaningMode>('ARCHIVE');
+
+  // モード変更をコントローラーに反映
+  useEffect(() => {
+    if (nozzleControllerRef.current) {
+      nozzleControllerRef.current.setMode(currentMode);
+    }
+  }, [currentMode]);
 
   useEffect(() => {
     // 既に初期化済み、またはDOMがない、メールがない場合はスキップ
@@ -41,10 +68,34 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
       canvasRef.current.appendChild(app.canvas);
       appRef.current = app;
 
-      // 2. メールの汚れオブジェクト生成
+      // ステージのソートを有効化（ノズルやエフェクトの重なり順のため）
+      app.stage.sortableChildren = true;
+
+      // 2. 各マネージャー・システムの初期化と依存性注入
+      
+      // ★ SoundManagerの初期化とロード
+      const soundManager = new SoundManager();
+      await soundManager.loadAll();
+      soundManagerRef.current = soundManager;
+
+      // ★ ParticleSystemの初期化
+      const particleSystem = new ParticleSystem(app.stage);
+      particleSystemRef.current = particleSystem;
+
+      // ★ InteractionSystemの初期化 (ParticleとSoundを注入)
+      interactionSystemRef.current = new InteractionSystem(particleSystem, soundManager);
+
+      // ★ NozzleControllerの初期化 (Soundを注入)
+      const nozzleController = new NozzleController(app, soundManager);
+      nozzleController.setMode(currentMode);
+      nozzleControllerRef.current = nozzleController;
+
+      // 3. メールの汚れオブジェクト生成 (Rendering担当の実装ベース)
+      dirtListRef.current = [];
+
       emails.forEach((email) => {
-        // 汚れのコンテナ
-        const dirtContainer = new PIXI.Container();
+        // 汚れのコンテナ作成
+        const dirtContainer = new PIXI.Container() as DirtContainer;
         
         // ランダムな位置に配置
         dirtContainer.x = 50 + Math.random() * 550; // 画面内に収まるように調整
@@ -54,7 +105,7 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
         const graphics = new PIXI.Graphics();
         graphics.rect(0, 0, 200, 100); // v8推奨: drawRect -> rect
         graphics.fill(0x8B4513);       // v8推奨: beginFill -> fill
-        // 角丸にする場合はこちら: graphics.roundRect(0, 0, 200, 100, 15).fill(0x8B4513);
+        // 角丸にする場合: graphics.roundRect(0, 0, 200, 100, 15).fill(0x8B4513);
         
         // テキスト（うっすら見える件名）
         const textStyle = new PIXI.TextStyle({
@@ -78,36 +129,43 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
         
         // インタラクション設定 (v8)
         dirtContainer.eventMode = 'static';
-        dirtContainer.cursor = 'crosshair';
+        dirtContainer.cursor = 'none'; // ノズルカーソルを使うため非表示
 
-        // ★洗浄ロジック: マウスオーバー/クリックで透明度を下げる
-        let isCleaning = false;
+        // 物理ステートとメールIDを紐付け
+        dirtContainer.physics = {
+          hp: 100,
+          maxHp: 100,
+          isDead: false,
+          isDying: false
+        };
+        dirtContainer.emailId = email.id;
         
-        dirtContainer.on('pointerdown', () => { isCleaning = true; });
-        dirtContainer.on('pointerup', () => { isCleaning = false; });
-        dirtContainer.on('pointerupoutside', () => { isCleaning = false; });
-        
-        // 毎フレーム実行されるループ
-        app.ticker.add(() => {
-          if (isCleaning) {
-            // 徐々に透明にする
-            dirtContainer.alpha -= 0.05;
+        app.stage.addChild(dirtContainer);
+        dirtListRef.current.push(dirtContainer);
+      });
 
-            // 完全に消えたら
-            if (dirtContainer.alpha <= 0) {
-              dirtContainer.visible = false;
-              isCleaning = false;
-              
-              // 既に記録済みでなければリストに追加
-              if (!cleanedIdsRef.current.has(email.id)) {
-                  cleanedIdsRef.current.add(email.id);
-                  onCleanComplete(Array.from(cleanedIdsRef.current));
-              }
-            }
+      // 4. メインループの登録 (システム連携)
+      app.ticker.add(() => {
+        if (!nozzleControllerRef.current || !interactionSystemRef.current) return;
+
+        // ノズルの状態を取得
+        const nozzleState = nozzleControllerRef.current.getState();
+
+        // InteractionSystemを更新 (物理演算、ヒット判定)
+        interactionSystemRef.current.update(
+          { x: nozzleState.x, y: nozzleState.y },
+          nozzleState.isSpraying,
+          nozzleState.mode,
+          dirtListRef.current
+        );
+
+        // 完全に消えた汚れを検出し、親コンポーネントへ通知
+        dirtListRef.current.forEach(dirt => {
+          if (dirt.physics?.isDead && dirt.emailId && !cleanedIdsRef.current.has(dirt.emailId)) {
+            cleanedIdsRef.current.add(dirt.emailId);
+            onCleanComplete(Array.from(cleanedIdsRef.current));
           }
         });
-
-        app.stage.addChild(dirtContainer);
       });
     };
 
@@ -115,17 +173,66 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
 
     // クリーンアップ関数
     return () => {
+      if (nozzleControllerRef.current) nozzleControllerRef.current.destroy();
+      if (particleSystemRef.current) particleSystemRef.current.destroy();
+      // SoundManagerは特に明示的な破棄メソッドがなければGCに任せるか、必要ならstop呼び出し
+      
       if (appRef.current) {
         appRef.current.destroy({ removeView: true }, { children: true });
         appRef.current = null;
       }
+      dirtListRef.current = [];
     };
   }, [emails]); // emailsが変わったときだけ再実行
 
   return (
     <div>
-      <h3>Canvas Preview (Drag/Click to Clean)</h3>
-      <div ref={canvasRef} style={{ border: '4px solid #444', borderRadius: '8px', display: 'inline-block' }} />
+      <h3>Canvas Preview (Drag to Clean)</h3>
+      
+      {/* モード切替UI */}
+      <div style={{ marginBottom: '10px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
+        <button
+          onClick={() => setCurrentMode('ARCHIVE')}
+          style={{
+            backgroundColor: currentMode === 'ARCHIVE' ? '#2196F3' : '#ccc',
+            color: currentMode === 'ARCHIVE' ? 'white' : 'black',
+            border: 'none',
+            padding: '8px 16px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+          }}
+        >
+          💧 アーカイブ (青)
+        </button>
+        <button
+          onClick={() => setCurrentMode('DELETE')}
+          style={{
+            backgroundColor: currentMode === 'DELETE' ? '#f44336' : '#ccc',
+            color: currentMode === 'DELETE' ? 'white' : 'black',
+            border: 'none',
+            padding: '8px 16px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+          }}
+        >
+          💥 削除 (赤)
+        </button>
+      </div>
+
+      <div 
+        ref={canvasRef} 
+        style={{ 
+          border: '4px solid #444', 
+          borderRadius: '8px', 
+          display: 'inline-block',
+          cursor: 'none' // システムカーソルを消してノズルを表示
+        }} 
+      />
+      <p style={{ textAlign: 'center', color: '#666', fontSize: '0.8rem', marginTop: '5px' }}>
+        マウスドラッグで洗浄！ {currentMode === 'ARCHIVE' ? 'アーカイブします' : '削除します'}
+      </p>
     </div>
   );
 };

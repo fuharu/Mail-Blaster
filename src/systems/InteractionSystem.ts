@@ -103,6 +103,10 @@ export class InteractionSystem {
         const centerX = bounds.x + bounds.width / 2;
         const centerY = bounds.y + bounds.height / 2;
         this.particleSystem.explode(centerX, centerY, 0x8B4513); // 茶色の破片
+
+        this.soundManager.play('DESTROY', 0.8); // 破壊音
+      } else {
+        this.soundManager.play('CLEAN', 1.0); // 洗浄音
       }
     }
   }

@@ -5,7 +5,7 @@ import type { EmailMessage, CleaningMode, DirtPhysicsState } from '../types';
 import { NozzleController } from './nozzle/NozzleController';
 import { InteractionSystem } from '../systems/InteractionSystem';
 import { ParticleSystem } from '../systems/ParticleSystem';
-import { SoundManager } from '../systems/SoundManager'; 
+import { SoundManager } from '../systems/SoundManager';
 
 interface Props {
   emails: EmailMessage[];
@@ -44,8 +44,11 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
     // 既に初期化済み、またはDOMがない、メールがない場合はスキップ
     if (!canvasRef.current || emails.length === 0) return;
     
-    // 多重初期化防止
+    // 多重初期化防止（同期チェック）
     if (appRef.current) return;
+
+    // 修正: 非同期処理の競合を防ぐためのフラグ
+    let isMounted = true;
 
     const initApp = async () => {
       // 1. Pixiアプリケーションの作成 (v8対応: initを使用)
@@ -58,6 +61,12 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
         backgroundAlpha: 1,
       });
 
+      // 修正: init待機中にアンマウントされていたら破棄して終了
+      if (!isMounted) {
+        app.destroy();
+        return;
+      }
+
       // マウント時に参照が外れている可能性のガード
       if (!canvasRef.current) {
         app.destroy();
@@ -65,6 +74,10 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
       }
 
       // HTML要素にCanvasを追加 (v8対応: view ではなく canvas)
+      // 修正: 念のため既存の子要素をクリアしてから追加
+      while (canvasRef.current.firstChild) {
+        canvasRef.current.removeChild(canvasRef.current.firstChild);
+      }
       canvasRef.current.appendChild(app.canvas);
       appRef.current = app;
 
@@ -73,21 +86,21 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
 
       // 2. 各マネージャー・システムの初期化と依存性注入
       
-      // ★ SoundManagerの初期化とロード
+      // SoundManagerの初期化とロード
       const soundManager = new SoundManager();
       await soundManager.loadAll();
       soundManagerRef.current = soundManager;
 
-      // ★ ParticleSystemの初期化
+      // ParticleSystemの初期化
       const particleSystem = new ParticleSystem(app.stage);
       particleSystemRef.current = particleSystem;
 
-      // ★ InteractionSystemの初期化 (ParticleとSoundを注入)
+      // InteractionSystemの初期化 (ParticleとSoundを注入)
       interactionSystemRef.current = new InteractionSystem(particleSystem, soundManager);
 
-      // ★ NozzleControllerの初期化 (Soundを注入)
+      // NozzleControllerの初期化 (Soundを注入)
       const nozzleController = new NozzleController(app, soundManager);
-      nozzleController.setMode(currentMode);
+      nozzleController.setMode(currentMode); // 初期モードをセット（stateの値を反映）
       nozzleControllerRef.current = nozzleController;
 
       // 3. メールの汚れオブジェクト生成 (Rendering担当の実装ベース)
@@ -173,14 +186,33 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
 
     // クリーンアップ関数
     return () => {
-      if (nozzleControllerRef.current) nozzleControllerRef.current.destroy();
-      if (particleSystemRef.current) particleSystemRef.current.destroy();
+      // 修正: アンマウントフラグを立てる
+      isMounted = false;
+
+      if (nozzleControllerRef.current) {
+         nozzleControllerRef.current.destroy();
+         nozzleControllerRef.current = null;
+      }
+      if (particleSystemRef.current) {
+         particleSystemRef.current.destroy();
+         particleSystemRef.current = null;
+      }
       // SoundManagerは特に明示的な破棄メソッドがなければGCに任せるか、必要ならstop呼び出し
+      if (soundManagerRef.current) {
+         soundManagerRef.current.stopJetLoop(); // 念の為停止
+         soundManagerRef.current = null;
+      }
       
       if (appRef.current) {
         appRef.current.destroy({ removeView: true }, { children: true });
         appRef.current = null;
       }
+      
+      // 修正: DOMからも確実に削除
+      if (canvasRef.current) {
+        canvasRef.current.innerHTML = '';
+      }
+
       dirtListRef.current = [];
     };
   }, [emails]); // emailsが変わったときだけ再実行

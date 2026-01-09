@@ -3,33 +3,30 @@ import * as PIXI from 'pixi.js';
 import type { DirtPhysicsState } from '../types';
 import type { CleaningMode } from '../types';
 import { ParticleSystem } from './ParticleSystem';
+import { SoundManager } from './SoundManager'; //　追記：効果音管理システムのインポート
 
 export class InteractionSystem {
   private particleSystem: ParticleSystem;
+  private soundManager: SoundManager; // ★追加
   
   // 設定値
   private readonly NOZZLE_RADIUS = 30; // ノズルの当たり判定サイズ
   private readonly DAMAGE_RATE = 2.0;  // 1フレームあたりのダメージ
   private readonly WASH_SPEED = 5;     // 青ノズルで流れる速度
 
-  constructor(particleSystem: ParticleSystem) {
+  // コンストラクタでSoundManagerを受け取る
+  constructor(particleSystem: ParticleSystem, soundManager: SoundManager) {
     this.particleSystem = particleSystem;
+    this.soundManager = soundManager;
   }
 
-  /**
-   * 毎フレーム呼ばれるメインループ
-   * @param nozzlePos ノズル担当から受け取る座標 {x, y}
-   * @param isSpraying ノズル担当から受け取る噴射フラグ
-   * @param mode 現在のノズルモード
-   * @param dirtList 描画担当が管理している汚れコンテナのリスト
-   */
   public update(
     nozzlePos: { x: number, y: number },
     isSpraying: boolean,
     mode: CleaningMode,
     dirtList: (PIXI.Container & { physics?: DirtPhysicsState })[]
   ) {
-    // 1. パーティクルの更新
+     // 1. パーティクルの更新
     this.particleSystem.update();
 
     // 2. 各汚れに対する処理
@@ -71,7 +68,7 @@ export class InteractionSystem {
     // 汚れの境界ボックス内にノズルの中心があればヒット、もしくは近ければヒットとする
     
     const bounds = dirt.getBounds();
-    
+
     // 1. ポイントが矩形の中にあるか
     if (bounds.containsPoint(point.x, point.y)) {
       return true;

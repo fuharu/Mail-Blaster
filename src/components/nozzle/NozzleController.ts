@@ -56,29 +56,26 @@ export class NozzleController {
       this.state.x = e.clientX - rect.left;
       this.state.y = e.clientY - rect.top;
     });
-
-    // 効果音制御の追加
+    
+    // マウスダウン（噴射開始）
     canvas.addEventListener('mousedown', () => {
       this.state.isSpraying = true;
       if (this.isMouseOver) {
         this.soundManager.startJetLoop();
       }
     });
-    
-    // マウスダウン（噴射開始）
-    canvas.addEventListener('mousedown', () => {
-      this.state.isSpraying = true;
-    });
 
     // マウスアップ（噴射終了）
     canvas.addEventListener('mouseup', () => {
       this.state.isSpraying = false;
+      this.soundManager.stopJetLoop();
     });
 
     // マウスがキャンバスから出た
     canvas.addEventListener('mouseleave', () => {
       this.state.isSpraying = false;
       this.isMouseOver = false;
+      this.soundManager.stopJetLoop();
     });
 
     // マウスがキャンバスに入った

@@ -57,7 +57,7 @@ export class NozzleController {
       this.state.y = e.clientY - rect.top;
     });
 
-    //効果音制御
+    // 効果音制御の追加
     canvas.addEventListener('mousedown', () => {
       this.state.isSpraying = true;
       if (this.isMouseOver) {

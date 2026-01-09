@@ -11,3 +11,6 @@ export interface EmailMessage {
 }
 
 export type DirtType = 'SLIME' | 'STICKER' | 'DUST';
+
+// 効果音のキー定義
+export type SoundKey = 'CLEAN' | 'DESTROY' | 'STAGE_CLEAR' | 'WATER_JET';

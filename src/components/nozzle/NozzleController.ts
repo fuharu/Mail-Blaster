@@ -4,6 +4,7 @@ import * as PIXI from 'pixi.js';
 import type { CleaningMode } from '../../types';
 import { NozzleVisual } from './NozzleVisual';
 import { SprayEffect } from './SprayEffect';
+import { SoundManager } from '../../systems/SoundManager'; // 追記：効果音管理システムのインポート
 
 export interface NozzleState {
   x: number;
@@ -16,18 +17,21 @@ export class NozzleController {
   private app: PIXI.Application;
   private nozzleVisual: NozzleVisual;
   private sprayEffect: SprayEffect;
-  
+  private soundManager: SoundManager; //　追記：効果音管理システムのメンバ変数
+
   private state: NozzleState = {
     x: 0,
     y: 0,
     isSpraying: false,
     mode: 'ARCHIVE',
   };
-
+  
   private isMouseOver: boolean = false;
 
-  constructor(app: PIXI.Application) {
+  // コンストラクタでSoundManagerを受け取る
+  constructor(app: PIXI.Application, soundManager: SoundManager) {
     this.app = app;
+    this.soundManager = soundManager; // 追記：効果音管理システムの初期化
     
     // ノズルの視覚化とエフェクトを作成
     this.nozzleVisual = new NozzleVisual(app.stage);
@@ -53,6 +57,14 @@ export class NozzleController {
       this.state.y = e.clientY - rect.top;
     });
 
+    //効果音制御
+    canvas.addEventListener('mousedown', () => {
+      this.state.isSpraying = true;
+      if (this.isMouseOver) {
+        this.soundManager.startJetLoop();
+      }
+    });
+    
     // マウスダウン（噴射開始）
     canvas.addEventListener('mousedown', () => {
       this.state.isSpraying = true;

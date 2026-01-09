@@ -11,7 +11,7 @@ export interface EmailMessage {
   opacity: number;   // 汚れ具合 (1.0 = 汚れている, 0.0 = 綺麗)
 }
 
-// 汚れの見た目・性質を表す簡易カテゴリ
+// 汚れの種類
 export type DirtType = 'SLIME' | 'STICKER' | 'DUST';
 
 // 洗浄モード（ノズルの種類）
@@ -26,3 +26,6 @@ export interface DirtPhysicsState {
   isDying: boolean;      // 消滅アニメーション中か
   mode?: CleaningMode;   // どのモードで倒されたか
 }
+
+// 効果音のキー定義 (SE担当追加分)
+export type SoundKey = 'CLEAN' | 'DESTROY' | 'STAGE_CLEAR' | 'WATER_JET';

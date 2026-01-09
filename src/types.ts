@@ -1,4 +1,3 @@
-// src/types.ts
 // メールメッセージの基本情報とUI表示に必要な状態
 export interface EmailMessage {
   id: string;        // メッセージID

@@ -343,7 +343,6 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
   const particleSystemRef = useRef<ParticleSystem | null>(null);
   const dirtListRef = useRef<DirtContainer[]>([]);
 
-  // UI状態
   const [currentMode, setCurrentMode] = useState<CleaningMode>('ARCHIVE');
   const [backgroundTemplate, setBackgroundTemplate] = useState<BackgroundTemplate>('washroom');
   const [isBackgroundOpen, setIsBackgroundOpen] = useState(false);
@@ -397,7 +396,6 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
 
   const currentTemplate = backgroundTemplates.find(t => t.key === backgroundTemplate) || backgroundTemplates[0];
 
-  // モード変更をコントローラーに反映
   useEffect(() => {
     if (nozzleControllerRef.current) {
       nozzleControllerRef.current.setMode(currentMode);
@@ -425,20 +423,13 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
         backgroundAlpha: 1,
       });
 
-      // 修正: init待機中にアンマウントされていたら破棄して終了
-      if (!isMounted) {
-        app.destroy();
-        return;
-      }
-
-      // マウント時に参照が外れている可能性のガード
-      if (!canvasRef.current) {
+      if (!isMounted || !canvasRef.current) {
         app.destroy();
         return;
       }
 
       // HTML要素にCanvasを追加 (v8対応: view ではなく canvas)
-      // 修正: 念のため既存の子要素をクリアしてから追加
+      // 念のため既存の子要素をクリアしてから追加
       while (canvasRef.current.firstChild) {
         canvasRef.current.removeChild(canvasRef.current.firstChild);
       }

@@ -1,19 +1,40 @@
 // src/App.tsx
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react'; // useRef, useEffectを追加
 import { useGoogleLogin } from '@react-oauth/google';
-import { fetchUnreadMessageIds, fetchMessageDetails, archiveMessages } from './GmailService';
-import CleaningCanvas from './components/CleaningCanvas'; 
-
-// 修正: type を追加
-import type { EmailMessage } from './types';
+import { fetchUnreadMessageIds, fetchMessageDetails, archiveMessages, trashMessages } from './GmailService';
+import CleaningCanvas from './components/CleaningCanvas';
+import type { EmailMessage, CleanedMessage } from './types';
+import { SoundManager } from './systems/SoundManager'; // インポート追加
 import './App.css';
 
 function App() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [emails, setEmails] = useState<EmailMessage[]>([]);
-  const [cleanedIds, setCleanedIds] = useState<string[]>([]);
+  const [cleanedResults, setCleanedResults] = useState<CleanedMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [fetchCount, setFetchCount] = useState<number>(5);
+
+  // ★追加: SoundManagerをApp全体で1つだけ保持する
+  const soundManagerRef = useRef<SoundManager | null>(null);
+
+  // ★追加: 初回マウント時にSoundManagerを初期化
+  useEffect(() => {
+    const initSound = async () => {
+      const sm = new SoundManager();
+      await sm.loadAll();
+      soundManagerRef.current = sm;
+      console.log('SoundManager initialized');
+    };
+    initSound();
+
+    // クリーンアップ（念の為）
+    return () => {
+      // SoundManagerにdispose/closeメソッドがあれば呼ぶが、
+      // 基本的にAppが死ぬまで使い回すのでnull代入のみ
+      soundManagerRef.current = null;
+    };
+  }, []);
 
   // Googleログイン処理
   const login = useGoogleLogin({
@@ -28,19 +49,18 @@ function App() {
   const handleFetchEmails = async () => {
     if (!accessToken) return;
     setLoading(true);
-    setStatus('未読メールをスキャン中...');
+    setStatus(`メールをスキャン中... (${fetchCount}件)`);
     
     try {
-      // 1. 未読メールのIDリスト取得
-      const messages = await fetchUnreadMessageIds(accessToken, 5); // テスト用に5件だけ
+      const messages = await fetchUnreadMessageIds(accessToken, fetchCount);
       
-      // 2. 詳細情報の取得（並列処理）
       const emailDetails = await Promise.all(
         messages.map((msg: any) => fetchMessageDetails(accessToken, msg.id))
       );
       
       setEmails(emailDetails);
-      setStatus(`${emailDetails.length} 件の汚れ（未読メール）が見つかりました！`);
+      setStatus(`${emailDetails.length} 件の汚れ（迷惑メール・未読）が見つかりました！`);
+      setCleanedResults([]);
     } catch (error) {
       console.error(error);
       setStatus('メール取得に失敗しました。');
@@ -49,18 +69,30 @@ function App() {
     }
   };
 
-  // Gmailへの同期（アーカイブ実行）
+  // Gmailへの同期
   const handleSyncToGmail = async () => {
-    if (!accessToken || cleanedIds.length === 0) return;
+    if (!accessToken || cleanedResults.length === 0) return;
     
-    const confirm = window.confirm(`${cleanedIds.length} 件のメールを本当にアーカイブしますか？`);
-    if (!confirm) return;
+    const archiveIds = cleanedResults
+      .filter(r => r.action === 'ARCHIVE')
+      .map(r => r.id);
+      
+    const trashIds = cleanedResults
+      .filter(r => r.action === 'DELETE')
+      .map(r => r.id);
+
+    const confirmMsg = `以下の処理を実行しますか？\n\n・アーカイブ: ${archiveIds.length}件\n・ゴミ箱へ: ${trashIds.length}件`;
+    if (!window.confirm(confirmMsg)) return;
 
     setLoading(true);
     try {
-      await archiveMessages(accessToken, cleanedIds);
+      await Promise.all([
+        archiveMessages(accessToken, archiveIds),
+        trashMessages(accessToken, trashIds)
+      ]);
+      
       setStatus('洗浄完了！Gmailに反映しました。');
-      setCleanedIds([]);
+      setCleanedResults([]);
       setEmails([]); // 画面リセット
     } catch (error) {
       console.error(error);
@@ -85,25 +117,39 @@ function App() {
           <button onClick={() => login()}>Googleでログイン</button>
         ) : (
           <>
+            <select 
+              value={fetchCount} 
+              onChange={(e) => setFetchCount(Number(e.target.value))}
+              disabled={loading || emails.length > 0}
+              style={{ padding: '8px', borderRadius: '4px' }}
+            >
+              <option value={5}>5件</option>
+              <option value={10}>10件</option>
+              <option value={15}>15件</option>
+              <option value={20}>20件</option>
+            </select>
+
             <button onClick={handleFetchEmails} disabled={loading || emails.length > 0}>
-              1. 汚れをスキャン (メール取得)
+              1. 汚れをスキャン
             </button>
             <button 
               onClick={handleSyncToGmail} 
-              disabled={loading || cleanedIds.length === 0}
-              style={{ backgroundColor: cleanedIds.length > 0 ? '#4CAF50' : '#ccc' }}
+              disabled={loading || cleanedResults.length === 0}
+              style={{ backgroundColor: cleanedResults.length > 0 ? '#4CAF50' : '#ccc' }}
             >
-              2. 洗浄結果を反映 (アーカイブ実行: {cleanedIds.length}件)
+              2. 洗浄結果を反映 (実行: {cleanedResults.length}件)
             </button>
           </>
         )}
       </div>
 
-      {/* ゲームキャンバス表示 */}
-      {emails.length > 0 && (
+      {/* soundManagerの準備ができていない場合は表示しないガードを入れることも可能ですが、
+          現状はnullチェックをCanvas側でするか、ここで渡す */}
+      {emails.length > 0 && soundManagerRef.current && (
         <CleaningCanvas 
           emails={emails} 
-          onCleanComplete={(ids) => setCleanedIds(ids)} 
+          onCleanComplete={(results) => setCleanedResults(results)} 
+          soundManager={soundManagerRef.current}
         />
       )}
     </div>

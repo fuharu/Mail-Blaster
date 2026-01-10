@@ -1,7 +1,7 @@
 // src/components/CleaningCanvas.tsx
 import { useEffect, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
-import type { EmailMessage, CleaningMode, DirtPhysicsState } from '../types';
+import type { EmailMessage, CleaningMode, DirtPhysicsState, CleanedMessage } from '../types';
 import { NozzleController } from './nozzle/NozzleController';
 import { InteractionSystem } from '../systems/InteractionSystem';
 import { ParticleSystem } from '../systems/ParticleSystem';
@@ -9,7 +9,8 @@ import { SoundManager } from '../systems/SoundManager';
 
 interface Props {
   emails: EmailMessage[];
-  onCleanComplete: (cleanedIds: string[]) => void;
+  onCleanComplete: (results: CleanedMessage[]) => void;
+  soundManager: SoundManager;
 }
 
 // 汚れコンテナの型拡張
@@ -329,13 +330,14 @@ const drawBlueBackground = (graphics: PIXI.Graphics, width: number, height: numb
   }
 };
 
-const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
+// soundManagerをpropsから受け取る
+const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<PIXI.Application | null>(null);
-  const cleanedIdsRef = useRef<Set<string>>(new Set());
+  const cleanedResultsRef = useRef<Map<string, CleaningMode>>(new Map());
 
   // システムの参照
-  const soundManagerRef = useRef<SoundManager | null>(null);
+  // soundManagerRefは不要になったので削除し、propsのsoundManagerを直接使います
   const nozzleControllerRef = useRef<NozzleController | null>(null);
   const interactionSystemRef = useRef<InteractionSystem | null>(null);
   const particleSystemRef = useRef<ParticleSystem | null>(null);
@@ -456,66 +458,98 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
       drawBackground(backgroundGraphics, backgroundTemplate, 800, 600);
 
       // 2. 各マネージャー・システムの初期化と依存性注入
+      // ここで new SoundManager() をしていたのを廃止
+      // 既にロード済みの props.soundManager を使用する
 
-      // SoundManagerの初期化とロード
-      const soundManager = new SoundManager();
-      await soundManager.loadAll();
-      soundManagerRef.current = soundManager;
-
-      // ParticleSystemの初期化
       const particleSystem = new ParticleSystem(app.stage);
       particleSystemRef.current = particleSystem;
 
       // InteractionSystemの初期化 (ParticleとSoundを注入)
       interactionSystemRef.current = new InteractionSystem(particleSystem, soundManager);
 
-      // NozzleControllerの初期化 (Soundを注入)
+      // propsのsoundManagerを渡す
       const nozzleController = new NozzleController(app, soundManager);
       nozzleController.setMode(currentMode); // 初期モードをセット（stateの値を反映）
       nozzleControllerRef.current = nozzleController;
 
       // 3. メールの汚れオブジェクト生成 (Rendering担当の実装ベース)
       dirtListRef.current = [];
+      cleanedResultsRef.current.clear();
 
-      emails.forEach((email) => {
+      // ★ レイアウト設定: グリッド計算用
+      const COLS = 3; // 3列
+      const BOX_WIDTH = 220; // 汚れの幅
+      const BOX_HEIGHT = 120; // 汚れの高さ
+      const GRID_OFFSET_X = 50; // 全体の開始位置X
+      const GRID_OFFSET_Y = 60; // 全体の開始位置Y
+      const SPACING_X = 250; // グリッドの間隔X
+      const SPACING_Y = 150; // グリッドの間隔Y
+
+      emails.forEach((email, index) => {
         // 汚れのコンテナ作成
         const dirtContainer = new PIXI.Container() as DirtContainer;
 
-        // ランダムな位置に配置
-        dirtContainer.x = 50 + Math.random() * 550; // 画面内に収まるように調整
-        dirtContainer.y = 50 + Math.random() * 400;
+        // ★ 修正点1: グリッドレイアウト + ランダムなゆらぎ (Jitter)
+        // 完全に重ならないようにグリッドに配置しつつ、少しずらして「汚れ感」を出す
+        const col = index % COLS;
+        const row = Math.floor(index / COLS);
 
-        // 汚れのグラフィック（仮：茶色の四角形）
+        // 基本位置
+        const baseX = GRID_OFFSET_X + col * SPACING_X;
+        const baseY = GRID_OFFSET_Y + row * SPACING_Y;
+
+        // ゆらぎ (-20px ~ +20px 程度)
+        const jitterX = (Math.random() - 0.5) * 40;
+        const jitterY = (Math.random() - 0.5) * 40;
+
+        dirtContainer.x = baseX + jitterX;
+        dirtContainer.y = baseY + jitterY;
+
+        // 汚れのグラフィック（枠）
         const graphics = new PIXI.Graphics();
-        graphics.rect(0, 0, 200, 100); // v8推奨: drawRect -> rect
-        graphics.fill(0x8B4513);       // v8推奨: beginFill -> fill
-        // 角丸にする場合: graphics.roundRect(0, 0, 200, 100, 15).fill(0x8B4513);
+        // 少し大きめにして文字の余白を作る
+        graphics.rect(0, 0, BOX_WIDTH, BOX_HEIGHT);
+        graphics.fill(0x8B4513);
+        // 枠線を少し明るくして視認性を上げる
+        graphics.stroke({ width: 2, color: 0xA0522D });
 
-        // テキスト（うっすら見える件名）
+        // テキストのはみ出し防止（マスク処理）
+        // マスク用のグラフィック（これより外側は表示されない）
+        const mask = new PIXI.Graphics();
+        mask.rect(0, 0, BOX_WIDTH, BOX_HEIGHT);
+        mask.fill(0xFFFFFF); // 色は何でも良い
+        dirtContainer.addChild(mask);
+        dirtContainer.mask = mask; // コンテナ全体にマスクを適用
+
+        // テキストスタイル調整
         const textStyle = new PIXI.TextStyle({
           fontFamily: 'Arial',
-          fontSize: 14,
+          fontSize: 15, // 少し大きく
+          fontWeight: 'bold',
           fill: '#ffffff',
           wordWrap: true,
-          wordWrapWidth: 180,
+          wordWrapWidth: BOX_WIDTH - 20, // 枠より20px狭くしてパディング確保
+          lineHeight: 20,
         });
-        // 長すぎる件名をカット
+
+        // テキスト生成
         const cleanSubject = email.subject || '(No Subject)';
+        // 文字数制限は緩和するが、マスクがあるので安心
         const text = new PIXI.Text({
-          text: cleanSubject.substring(0, 30) + '...',
+          text: cleanSubject,
           style: textStyle
         });
-        text.x = 10;
-        text.y = 10;
+        text.x = 10; // 左パディング
+        text.y = 10; // 上パディング
 
         dirtContainer.addChild(graphics);
         dirtContainer.addChild(text);
 
-        // インタラクション設定 (v8)
+        // インタラクション設定
         dirtContainer.eventMode = 'static';
-        dirtContainer.cursor = 'none'; // ノズルカーソルを使うため非表示
+        dirtContainer.cursor = 'none';
 
-        // 物理ステートとメールIDを紐付け
+        // 物理ステート設定
         dirtContainer.physics = {
           hp: 100,
           maxHp: 100,
@@ -548,9 +582,15 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
 
         // 完全に消えた汚れを検出し、親コンポーネントへ通知
         dirtListRef.current.forEach(dirt => {
-          if (dirt.physics?.isDead && dirt.emailId && !cleanedIdsRef.current.has(dirt.emailId)) {
-            cleanedIdsRef.current.add(dirt.emailId);
-            onCleanComplete(Array.from(cleanedIdsRef.current));
+          if (dirt.physics?.isDead && dirt.emailId && !cleanedResultsRef.current.has(dirt.emailId)) {
+            const action = dirt.physics.mode || 'ARCHIVE';
+            cleanedResultsRef.current.set(dirt.emailId, action);
+
+            const results: CleanedMessage[] = Array.from(cleanedResultsRef.current.entries()).map(([id, act]) => ({
+              id,
+              action: act
+            }));
+            onCleanComplete(results);
           }
         });
       });
@@ -560,36 +600,22 @@ const CleaningCanvas = ({ emails, onCleanComplete }: Props) => {
 
     // クリーンアップ関数
     return () => {
-      // 修正: アンマウントフラグを立てる
       isMounted = false;
+      if (nozzleControllerRef.current) nozzleControllerRef.current.destroy();
+      if (particleSystemRef.current) particleSystemRef.current.destroy();
 
-      if (nozzleControllerRef.current) {
-        nozzleControllerRef.current.destroy();
-        nozzleControllerRef.current = null;
-      }
-      if (particleSystemRef.current) {
-        particleSystemRef.current.destroy();
-        particleSystemRef.current = null;
-      }
-      // SoundManagerは特に明示的な破棄メソッドがなければGCに任せるか、必要ならstop呼び出し
-      if (soundManagerRef.current) {
-        soundManagerRef.current.stopJetLoop(); // 念の為停止
-        soundManagerRef.current = null;
-      }
+      // SoundManagerの停止処理は呼ぶが、インスタンス自体は破棄しない
+      if (soundManager) soundManager.stopJetLoop();
 
+      // Pixi Appの完全破棄（Contextも破棄）
       if (appRef.current) {
         appRef.current.destroy({ removeView: true }, { children: true });
         appRef.current = null;
       }
-
-      // 修正: DOMからも確実に削除
-      if (canvasRef.current) {
-        canvasRef.current.innerHTML = '';
-      }
-
+      if (canvasRef.current) canvasRef.current.innerHTML = '';
       dirtListRef.current = [];
     };
-  }, [emails]); // emailsが変わったときだけ再実行
+  }, [emails, soundManager]); // emailsとsoundManagerが変わったときだけ再実行
 
   // 背景テンプレート変更時の処理
   useEffect(() => {

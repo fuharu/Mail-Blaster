@@ -28,3 +28,9 @@ export interface DirtPhysicsState {
 
 // 効果音のキー定義 (SE担当追加分)
 export type SoundKey = 'CLEAN' | 'DESTROY' | 'STAGE_CLEAR' | 'WATER_JET';
+
+// 洗浄完了したメッセージの情報（IDと実行したアクション）
+export interface CleanedMessage {
+  id: string;
+  action: CleaningMode;
+}

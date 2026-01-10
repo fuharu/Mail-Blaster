@@ -463,24 +463,45 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
       nozzleController.setMode(currentMode); // 初期モードをセット（stateの値を反映）
       nozzleControllerRef.current = nozzleController;
 
-      // 3. メールの汚れオブジェクト生成 (Rendering担当の実装ベース)
+      // 3. アセットのロードとメールの汚れオブジェクト生成
+      // 画像を事前にロード（v8推奨）
+      const dirtImages = [
+        '/images/pack.png',
+        '/images/dirt.png',
+        '/images/cardboard.png',
+        '/images/tuti.png',
+        '/images/can.svg',
+      ];
+      
+      // 背景と汚れ画像を同時にロード
+      const [bgTexture, ...textures] = await Promise.all([
+        PIXI.Assets.load('/images/floor.png'),
+        ...dirtImages.map(path => PIXI.Assets.load(path))
+      ]);
+
+      // 背景スプライトを一番奥に追加
+      const background = new PIXI.Sprite(bgTexture);
+      background.width = app.screen.width;
+      background.height = app.screen.height;
+      app.stage.addChildAt(background, 0);
+
       dirtListRef.current = [];
       cleanedResultsRef.current.clear();
 
-      // ★ レイアウト設定: グリッド計算用
-      const COLS = 3; // 3列
-      const BOX_WIDTH = 220; // 汚れの幅
-      const BOX_HEIGHT = 120; // 汚れの高さ
-      const GRID_OFFSET_X = 50; // 全体の開始位置X
-      const GRID_OFFSET_Y = 60; // 全体の開始位置Y
-      const SPACING_X = 250; // グリッドの間隔X
-      const SPACING_Y = 150; // グリッドの間隔Y
+      // グリッドレイアウト用の定数
+      const BOX_WIDTH = 200;
+      const BOX_HEIGHT = 100;
+      const COLS = 3;
+      const SPACING_X = 240;
+      const SPACING_Y = 140;
+      const GRID_OFFSET_X = 60;
+      const GRID_OFFSET_Y = 60;
 
       emails.forEach((email, index) => {
         // 汚れのコンテナ作成
         const dirtContainer = new PIXI.Container() as DirtContainer;
 
-        // ★ 修正点1: グリッドレイアウト + ランダムなゆらぎ (Jitter)
+        // グリッドレイアウト + ランダムなゆらぎ (Jitter)
         // 完全に重ならないようにグリッドに配置しつつ、少しずらして「汚れ感」を出す
         const col = index % COLS;
         const row = Math.floor(index / COLS);
@@ -493,14 +514,23 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
         const jitterX = (Math.random() - 0.5) * 40;
         const jitterY = (Math.random() - 0.5) * 40;
 
+        // 位置を設定
         dirtContainer.x = baseX + jitterX;
         dirtContainer.y = baseY + jitterY;
+
+        // 画像の表示 (ランダムに選択)
+        const texture = textures[Math.floor(Math.random() * textures.length)];
+        const dirtSprite = new PIXI.Sprite(texture);
+        dirtSprite.width = BOX_WIDTH;
+        dirtSprite.height = BOX_HEIGHT;
+        dirtSprite.anchor.set(0); // 左上基準
+        dirtContainer.addChild(dirtSprite);
 
         // 汚れのグラフィック（枠）
         const graphics = new PIXI.Graphics();
         // 少し大きめにして文字の余白を作る
         graphics.rect(0, 0, BOX_WIDTH, BOX_HEIGHT);
-        graphics.fill(0x8B4513);
+        graphics.fill({ color: 0x8B4513 });
         // 枠線を少し明るくして視認性を上げる
         graphics.stroke({ width: 2, color: 0xA0522D });
 
@@ -508,39 +538,40 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
         // マスク用のグラフィック（これより外側は表示されない）
         const mask = new PIXI.Graphics();
         mask.rect(0, 0, BOX_WIDTH, BOX_HEIGHT);
-        mask.fill(0xFFFFFF); // 色は何でも良い
+        mask.fill({ color: 0xFFFFFF }); // 色は何でも良い
         dirtContainer.addChild(mask);
         dirtContainer.mask = mask; // コンテナ全体にマスクを適用
 
         // テキストスタイル調整
         const textStyle = new PIXI.TextStyle({
           fontFamily: 'Arial',
-          fontSize: 15, // 少し大きく
-          fontWeight: 'bold',
+          fontSize: 14,
           fill: '#ffffff',
           wordWrap: true,
-          wordWrapWidth: BOX_WIDTH - 20, // 枠より20px狭くしてパディング確保
-          lineHeight: 20,
+          wordWrapWidth: 180,
         });
-
-        // テキスト生成
+        
+        // 長すぎる件名をカット
         const cleanSubject = email.subject || '(No Subject)';
-        // 文字数制限は緩和するが、マスクがあるので安心
+        const displaySubject = cleanSubject.length > 30 
+          ? cleanSubject.substring(0, 30) + '...' 
+          : cleanSubject;
+
         const text = new PIXI.Text({
-          text: cleanSubject,
+          text: displaySubject,
           style: textStyle
         });
-        text.x = 10; // 左パディング
-        text.y = 10; // 上パディング
+        text.x = 10;
+        text.y = 10;
 
-        dirtContainer.addChild(graphics);
+        // dirtContainer.addChild(graphics);
         dirtContainer.addChild(text);
 
-        // インタラクション設定
+        // インタラクション設定 (v8)
         dirtContainer.eventMode = 'static';
-        dirtContainer.cursor = 'none';
+        dirtContainer.cursor = 'none'; // ノズルカーソルを使うため非表示
 
-        // 物理ステート設定
+        // 物理ステートとメールIDを紐付け
         dirtContainer.physics = {
           hp: 100,
           maxHp: 100,
@@ -592,8 +623,15 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
     // クリーンアップ関数
     return () => {
       isMounted = false;
-      if (nozzleControllerRef.current) nozzleControllerRef.current.destroy();
-      if (particleSystemRef.current) particleSystemRef.current.destroy();
+      
+      if (nozzleControllerRef.current) {
+        nozzleControllerRef.current.destroy();
+        nozzleControllerRef.current = null;
+      }
+      if (particleSystemRef.current) {
+        particleSystemRef.current.destroy();
+        particleSystemRef.current = null;
+      }
 
       // SoundManagerの停止処理は呼ぶが、インスタンス自体は破棄しない
       if (soundManager) soundManager.stopJetLoop();
@@ -603,7 +641,12 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
         appRef.current.destroy({ removeView: true }, { children: true });
         appRef.current = null;
       }
-      if (canvasRef.current) canvasRef.current.innerHTML = '';
+      
+      // 修正: DOMからも確実に削除
+      if (canvasRef.current) {
+        canvasRef.current.innerHTML = '';
+      }
+
       dirtListRef.current = [];
     };
   }, [emails, soundManager]); // emailsとsoundManagerが変わったときだけ再実行

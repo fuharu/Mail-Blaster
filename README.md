@@ -172,6 +172,37 @@ npm run dev
 
 ---
 
+## three.js を使う際
+
+three.jsを使用して3Dを使用しようとした残骸。使う場合は以下の手順
+
+- `src/components/CleaningCanvas3D.tsx`: Three.js を使用した描画・ゲームロジック。
+
+1. three.jsのライブラリのインストール
+```
+npm install three @types/three @react-three/fiber @react-three/drei                                          
+```
+
+2. src/App.tsxに追記
+```
+// src/App.tsx
+import { useState } from 'react';
+import { useGoogleLogin } from '@react-oauth/google';
+import { fetchUnreadMessageIds, fetchMessageDetails, archiveMessages } from './GmailService';
+//import CleaningCanvas from './components/CleaningCanvas';  // ←コメントアウト 
+import CleaningCanvas from './components/CleaningCanvas3D';  // ←追記
+```
+
+3. 実行
+```
+npm run dev
+```
+
+ブラウザで [http://localhost:5173](https://www.google.com/search?q=http://localhost:5173) にアクセスしてください。
+
+
+---
+
 ## 🛡️ 免責事項
 
 このプロジェクトはプロトタイプです。 メールのアーカイブ操作（整理）を行いますが、重要なデータを扱う際は十分にご注意ください。開発者は本ソフトウェアの使用により生じたいかなる損害についても責任を負いません。

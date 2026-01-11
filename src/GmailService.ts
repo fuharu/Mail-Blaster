@@ -5,19 +5,21 @@ import type { EmailMessage } from './types';
 
 const GMAIL_API_URL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
-// メールリスト（IDのみ）を取得
-export const fetchUnreadMessageIds = async (accessToken: string, maxResults: number = 10) => {
+// メールリストを取得（クエリと件数を指定可能に）
+export const fetchUnreadMessageIds = async (accessToken: string, maxResults: number = 5) => {
   const response = await axios.get(`${GMAIL_API_URL}/messages`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     params: {
-      q: 'is:unread', // 未読のみ対象
+      // ★変更: 未読の中で「メイン」「プロモーション」「ソーシャル」などを対象にする
+      // 「スパム以外」という要件なので、category:promotions や category:social を含めます
+      q: 'is:unread (category:promotions OR category:social OR label:inbox)', 
       maxResults: maxResults,
     },
   });
   return response.data.messages || [];
 };
 
-// 個別のメール詳細（件名や送信者）を取得
+// 個別のメール詳細を取得
 export const fetchMessageDetails = async (accessToken: string, messageId: string): Promise<EmailMessage> => {
   const response = await axios.get(`${GMAIL_API_URL}/messages/${messageId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -41,7 +43,7 @@ export const fetchMessageDetails = async (accessToken: string, messageId: string
   };
 };
 
-// メールをアーカイブする（ラベル変更）
+// メールをアーカイブする（青ノズル用）
 export const archiveMessages = async (accessToken: string, messageIds: string[]) => {
   if (messageIds.length === 0) return;
   
@@ -55,5 +57,22 @@ export const archiveMessages = async (accessToken: string, messageIds: string[])
     {
       headers: { Authorization: `Bearer ${accessToken}` },
     }
+  );
+};
+
+// ★追加: メールをゴミ箱に移動する（赤ノズル用）
+export const trashMessages = async (accessToken: string, messageIds: string[]) => {
+  if (messageIds.length === 0) return;
+
+  // Gmail APIには batchTrash がないので、Promise.all で並列実行します
+  // (batchModifyで TRASH ラベルを付ける方法はシステムラベル制限があるため確実な trash エンドポイントを使用)
+  await Promise.all(
+    messageIds.map(id => 
+      axios.post(
+        `${GMAIL_API_URL}/messages/${id}/trash`,
+        {},
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      )
+    )
   );
 };

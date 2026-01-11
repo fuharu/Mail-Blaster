@@ -546,7 +546,7 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
         const textStyle = new PIXI.TextStyle({
           fontFamily: 'Arial',
           fontSize: 14,
-          fill: '#ffffff',
+          fill: '#000000',
           wordWrap: true,
           wordWrapWidth: 180,
         });

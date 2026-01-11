@@ -488,48 +488,27 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
       dirtListRef.current = [];
       cleanedResultsRef.current.clear();
 
-      // グリッドレイアウト用の定数
-      const BOX_WIDTH = 200;
-      const BOX_HEIGHT = 100;
-      const COLS = 3;
-      const SPACING_X = 240;
-      const SPACING_Y = 140;
-      const GRID_OFFSET_X = 60;
-      const GRID_OFFSET_Y = 60;
-
-      emails.forEach((email, index) => {
+      emails.forEach((email) => {
         // 汚れのコンテナ作成
         const dirtContainer = new PIXI.Container() as DirtContainer;
 
-        // グリッドレイアウト + ランダムなゆらぎ (Jitter)
-        // 完全に重ならないようにグリッドに配置しつつ、少しずらして「汚れ感」を出す
-        const col = index % COLS;
-        const row = Math.floor(index / COLS);
-
-        // 基本位置
-        const baseX = GRID_OFFSET_X + col * SPACING_X;
-        const baseY = GRID_OFFSET_Y + row * SPACING_Y;
-
-        // ゆらぎ (-20px ~ +20px 程度)
-        const jitterX = (Math.random() - 0.5) * 40;
-        const jitterY = (Math.random() - 0.5) * 40;
-
-        // 位置を設定
-        dirtContainer.x = baseX + jitterX;
-        dirtContainer.y = baseY + jitterY;
+        // 完全ランダムな配置
+        // 画面サイズ(800x600)内に収まるように、余白(50px)と汚れのサイズ(200x100)を考慮して配置
+        dirtContainer.x = 50 + Math.random() * (800 - 200 - 100); 
+        dirtContainer.y = 50 + Math.random() * (600 - 100 - 100);
 
         // 画像の表示 (ランダムに選択)
         const texture = textures[Math.floor(Math.random() * textures.length)];
         const dirtSprite = new PIXI.Sprite(texture);
-        dirtSprite.width = BOX_WIDTH;
-        dirtSprite.height = BOX_HEIGHT;
+        dirtSprite.width = 200;
+        dirtSprite.height = 100;
         dirtSprite.anchor.set(0); // 左上基準
         dirtContainer.addChild(dirtSprite);
 
         // 汚れのグラフィック（枠）
         const graphics = new PIXI.Graphics();
         // 少し大きめにして文字の余白を作る
-        graphics.rect(0, 0, BOX_WIDTH, BOX_HEIGHT);
+        graphics.rect(0, 0, 200, 100);
         graphics.fill({ color: 0x8B4513 });
         // 枠線を少し明るくして視認性を上げる
         graphics.stroke({ width: 2, color: 0xA0522D });
@@ -537,7 +516,7 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
         // テキストのはみ出し防止（マスク処理）
         // マスク用のグラフィック（これより外側は表示されない）
         const mask = new PIXI.Graphics();
-        mask.rect(0, 0, BOX_WIDTH, BOX_HEIGHT);
+        mask.rect(0, 0, 200, 100);
         mask.fill({ color: 0xFFFFFF }); // 色は何でも良い
         dirtContainer.addChild(mask);
         dirtContainer.mask = mask; // コンテナ全体にマスクを適用
@@ -546,7 +525,7 @@ const CleaningCanvas = ({ emails, onCleanComplete, soundManager }: Props) => {
         const textStyle = new PIXI.TextStyle({
           fontFamily: 'Arial',
           fontSize: 14,
-          fill: '#000000',
+          fill: '#808080',
           wordWrap: true,
           wordWrapWidth: 180,
         });

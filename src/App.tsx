@@ -104,7 +104,7 @@ function App() {
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '20px' }}>
-      <h1>Email Power Wash (Prototype)</h1>
+      <h1>Mail Blaster</h1>
       
       {/* ステータス表示 */}
       <div style={{ margin: '20px 0', padding: '10px', background: '#f0f0f0', borderRadius: '4px' }}>
